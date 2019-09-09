@@ -13,16 +13,21 @@ import csv
 # Ranking values include:
 #   1. AverageRent                  - Average rent from 3 month moving average
 #                                   NOTE: This is the value of the latest ZRI
-#   2. OnePercentRule               - Used for calculating rent divided by total cost of house
+#   2. OnePercentRule               - TODO Used for calculating rent divided by total cost of house
 #   3. RentGrowth                   - 3 month moving average of rent growth
-#   4. PriceAppreciation            - 3 month moving average of price appreciation based on ZHVI home values
-#   5. PriceAppreciationSqft        - 3 month moving average of price appreciation by square footage
-#   6. PctPriceCuts                 - Percent of SFRs that have cuts in price (high = less desirable, low = more desirable)
+#   4. PriceAppreciation            - TODO 3 month moving average of price appreciation based on ZHVI home values
+#   5. PriceAppreciationSqft        - TODO 3 month moving average of price appreciation by square footage
+#   6. PctPriceCuts                 - TODO Percent of SFRs that have cuts in price (high = less desirable, low = more desirable)
 #   7. AverageHomeValue             - Average home value from ZHVI
 ##########################################################################################################################
 ComputedData = {}
 ZipCodeRankings = {}
 Header = []
+
+# Global Data Stores (Note: Uses lots of memory to hold global arrays of the excel file)
+rentPriceData = {}
+housePriceData = {}
+priceAdjustmentData = {}
 
 # Filters
 RentHomePricePercent = 1.0
@@ -38,9 +43,6 @@ RentHomePricePercent = 1.0
 
 # Loads the ZRI Rental Prices for Single Family Residences (SFR) data from Zillow
 def loadZRIRentalPriceSFRZillow():
-
-    # Initialize dict structure for storing spreadsheet data
-    csvData = {}
 
     # Open ZRI Rental Prices for Single Family Residences by Zip Code
     with open ('Zip_Zri_SingleFamilyResidenceRental.csv', newline='', encoding='utf-8') as ZRIRentalPriceSFRCSV:
@@ -62,44 +64,39 @@ def loadZRIRentalPriceSFRZillow():
                     timeSeriesHeader.append(header[x])
                     timeSeriesPrices.append(value)
 
-            csvData[row[1]] = [row[2], row[3], row[4], row[5], row[6], timeSeriesHeader, timeSeriesPrices]
-            
-        # Use csvData to add average rent to computed data
-        loadAverageRent(csvData)
+            rentPriceData[row[1]] = [row[2], row[3], row[4], row[5], row[6], timeSeriesHeader, timeSeriesPrices]
 
-        # Use csvData to add rent growth to computed data
-        loadRentGrowth(csvData)
-
-def loadAverageRent(csvData):
+def loadAverageRent():
     # Grab each zip code and load average rent into computed data
-    for row in csvData:
+    for row in rentPriceData:
 
         # Check to make sure if Zip Code already exists in Computed Data, otherwise add it
+        # TODO Change the ordering to use a hashmap from header to ensure correct matching from different headers
         if row not in ComputedData:
             ComputedData[row] = {}
-            ComputedData[row][Header[2]] = csvData[row][0]  # City
-            ComputedData[row][Header[3]] = csvData[row][1]  # State
-            ComputedData[row][Header[4]] = csvData[row][2]  # Metro
-            ComputedData[row][Header[5]] = csvData[row][3]  # County
-            ComputedData[row][Header[6]] = csvData[row][4]  # Size Rank
+            ComputedData[row][Header[2]] = rentPriceData[row][0]  # City
+            ComputedData[row][Header[3]] = rentPriceData[row][1]  # State
+            ComputedData[row][Header[4]] = rentPriceData[row][2]  # Metro
+            ComputedData[row][Header[5]] = rentPriceData[row][3]  # County
+            ComputedData[row][Header[6]] = rentPriceData[row][4]  # Size Rank
 
         # Grab last rent value in timeSeriesPrices (ZRI already calculates 3 month moving average for rent) and add to
         # the ComputedData
-        rentEntriesLen = len(csvData[row][6])
-        ComputedData[row]['AverageRent'] = csvData[row][6][rentEntriesLen-1] # Most Recent Rental Average (3 Month Moving Average)
+        rentEntriesLen = len(rentPriceData[row][6])
+        ComputedData[row]['AverageRent'] = rentPriceData[row][6][rentEntriesLen-1] # Most Recent Rental Average (3 Month Moving Average)
 
-def loadRentGrowth(csvData):
+def loadRentGrowth():
     # Grab each zip code and load average rent into computed data
-    for zipcode in csvData:
+    for zipcode in rentPriceData:
 
         # Check to make sure if Zip Code already exists in Computed Data, otherwise add it
         if zipcode not in ComputedData:
             ComputedData[zipcode] = {}
-            ComputedData[zipcode][Header[2]] = csvData[zipcode][0]  # City
-            ComputedData[zipcode][Header[3]] = csvData[zipcode][1]  # State
-            ComputedData[zipcode][Header[4]] = csvData[zipcode][2]  # Metro
-            ComputedData[zipcode][Header[5]] = csvData[zipcode][3]  # County
-            ComputedData[zipcode][Header[6]] = csvData[zipcode][4]  # Size Rank
+            ComputedData[zipcode][Header[2]] = rentPriceData[zipcode][0]  # City
+            ComputedData[zipcode][Header[3]] = rentPriceData[zipcode][1]  # State
+            ComputedData[zipcode][Header[4]] = rentPriceData[zipcode][2]  # Metro
+            ComputedData[zipcode][Header[5]] = rentPriceData[zipcode][3]  # County
+            ComputedData[zipcode][Header[6]] = rentPriceData[zipcode][4]  # Size Rank
 
         rentGrowthList = []
         first = None
@@ -107,7 +104,7 @@ def loadRentGrowth(csvData):
         third = None
         prev = None
         # Calculate rent growth from past 5 years of data and store in rentGrowthList
-        for rentValue in csvData[zipcode][6][-30:]:
+        for rentValue in rentPriceData[zipcode][6][-30:]:
             # Shift values for moving average (3 point moving average)
             first = second
             second = third
@@ -124,7 +121,7 @@ def loadRentGrowth(csvData):
 
         # Calculate 3 Month Moving Average of rent growth
         rentGrowth = sum(rentGrowthList) / len(rentGrowthList)
-        print(zipcode + ": " + str(rentGrowth))
+        # print(zipcode + ": " + str(rentGrowth))
 
         # Store average rent growth in ComputedData
         ComputedData[zipcode]['RentGrowth'] = rentGrowth
@@ -148,11 +145,8 @@ def loadRentGrowth(csvData):
 # Loads the ZHVI Home Prices for Single Family Residences (SFR) data from Zillow
 def loadZHVIHomePriceSFRZillow():
 
-    # Initialize dict structure for storing spreadsheet data
-    csvData = {}
-
     # Open ZRI Rental Prices for Single Family Residences by Zip Code
-    with open ('Zip_Zhvi_SingleFamilyResidence.csv') as ZHVIHomePriceSFRCSV:
+    with open ('Zip_Zhvi_SingleFamilyResidence.csv', newline='', encoding='utf-8') as ZHVIHomePriceSFRCSV:
 
         # Create the CSV reader to collect excel information
         ZHVIHomePriceReader = csv.reader(ZHVIHomePriceSFRCSV, delimiter=',')
@@ -172,7 +166,28 @@ def loadZHVIHomePriceSFRZillow():
                     timeSeriesHeader.append(header[x])
                     timeSeriesPrices.append(value)
 
-            csvData[row[1]] = [row[2], row[3], row[4], row[5], row[6], timeSeriesHeader, timeSeriesPrices]
+            housePriceData[row[1]] = [row[2], row[3], row[4], row[5], row[6], timeSeriesHeader, timeSeriesPrices]
+
+# Gets the average home value for each zip code
+def getAverageHomeValue():
+    
+    for zipcode in housePriceData:
+
+        # Check to see if zipcode is in our ComputedData
+        if zipcode not in ComputedData:
+            ComputedData[zipcode] = {}
+            ComputedData[zipcode][Header[2]] = housePriceData[zipcode][0]  # City
+            ComputedData[zipcode][Header[3]] = housePriceData[zipcode][1]  # State
+            ComputedData[zipcode][Header[4]] = housePriceData[zipcode][2]  # Metro
+            ComputedData[zipcode][Header[5]] = housePriceData[zipcode][3]  # County
+            ComputedData[zipcode][Header[6]] = housePriceData[zipcode][4]  # Size Rank
+
+        # Grab last value of house price data and append as the average house value
+        # TODO Fix this hacky shit to grab last value
+        for value in housePriceData[zipcode][6][-1:]:
+            print(zipcode + ": " + value)
+            ComputedData[zipcode]['AverageHomeValue'] = value
+        
 
 ##########################################################################################################################
 # Monthly Home Sales (Number, Seasonally Adjusted) - Zillow [Home Listings and Sales]
@@ -196,15 +211,50 @@ def loadZHVIHomePriceSFRZillow():
 # Listings With Price Cut - Seasonally Adjusted, SFR (%) - Zillow [Home Listings and Sales]
 ##########################################################################################################################
 
-# We are using this
+# Loads the Listings With Price Cut - Seasonally Adjusted, SFR (%) data from Zillow
+def loadZipListingsPriceCutSeasAdjZillow():
+
+    # Open ZRI Rental Prices for Single Family Residences by Zip Code
+    with open ('Zip_Listings_PriceCut_SeasAdj_SingleFamilyResidence.csv', newline='', encoding='utf-8') as ListingPriceCutSeasAdjCSV:
+
+        # Create the CSV reader to collect excel information
+        ListingPriceCutSeasAdjReader = csv.reader(ListingPriceCutSeasAdjCSV, delimiter=',')
+
+        header = next(ListingPriceCutSeasAdjReader)
+        #print(header)
+
+        # Loop through values in the CSV, enumerate starting at index 1 (skip header)
+        for row in ListingPriceCutSeasAdjReader:
+            #print(row)
+
+            timeSeriesHeader = []
+            timeSeriesPrices = []
+            # Loop through each row  
+            for x, value in enumerate(row, start=0):
+                if x > 6:
+                    timeSeriesHeader.append(header[x])
+                    timeSeriesPrices.append(value)
+
+            housePriceData[row[1]] = [row[2], row[3], row[4], row[5], row[6], timeSeriesHeader, timeSeriesPrices]
 
 ##########################################################################################################################
 # Main Function
 ##########################################################################################################################
 
 def main():
+    # Load different spreadsheets
     loadZRIRentalPriceSFRZillow()
-    #loadZHVIHomePriceSFRZillow()
+    loadZHVIHomePriceSFRZillow()
+
+    # Use rentPriceData to add average rent to computed data
+    loadAverageRent()
+
+    # Use rentPriceData to add rent growth to computed data
+    loadRentGrowth()
+
+    getAverageHomeValue()
+
+    
 
 if __name__ == "__main__":
     main()
